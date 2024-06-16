@@ -43,7 +43,7 @@ db_mysql.connect(err => {
 
 db.serialize(() => {
   db.run('CREATE TABLE IF NOT EXISTS batches (id INTEGER PRIMARY KEY AUTOINCREMENT, batch TEXT UNIQUE, start_date TEXT)');
-  db.run('CREATE TABLE IF NOT EXISTS off_days_new (id INTEGER PRIMARY KEY AUTOINCREMENT, batch TEXT UNIQUE, date TEXT)');
+  db.run('CREATE TABLE IF NOT EXISTS off_days_new (id INTEGER PRIMARY KEY AUTOINCREMENT, batch TEXT UNIQUE, dates TEXT)');
 
   db.all("SELECT name FROM sqlite_master WHERE type='table'", (err, tables) => {
     if (err) {
@@ -131,7 +131,7 @@ app.get('/routine-data', (req, res) => {
 //   }
 
 //   const placeholders = dates.map(() => '(?)').join(',');
-//   const query = `INSERT OR IGNORE INTO off_days_new (date) VALUES ${placeholders}`;
+//   const query = `INSERT OR IGNORE INTO off_days_new (dates) VALUES ${placeholders}`;
 //   console.log("dates", dates)
 //   db.run(query, dates.flat(), function (error) {
 //     if (error) {
@@ -159,7 +159,7 @@ app.get('/routine-data', (req, res) => {
 //   }
 
 //   const placeholders = dates.map(() => '(?)').join(',');
-//   const query = `INSERT OR IGNORE INTO off_days_new (batch, date) VALUES ${batch, placeholders}`;
+//   const query = `INSERT OR IGNORE INTO off_days_new (batch, dates) VALUES ${batch, placeholders}`;
 //   console.log("dates", dates)
 
 //   db.run(query, dates.flat(), function (error) {
@@ -187,7 +187,12 @@ app.post('/save-off-days', (req, res) => {
     dates.push(new Date(dt).toISOString().slice(0, 10));
   }
 
+  // console.log("dates",dates)
+
   const datesJson = JSON.stringify(dates);
+
+  // console.log("jsondates***********",datesJson)
+
   const query = 'INSERT OR REPLACE INTO off_days_new (batch, dates) VALUES (?, ?)';
 
   db.run(query, [batch, datesJson], function (error) {
@@ -206,7 +211,7 @@ app.post('/save-off-days', (req, res) => {
 
 // app.get('/get-off-days', (req, res) => {
   
-//   const query = 'SELECT date FROM off_days_new';
+//   const query = 'SELECT dates FROM off_days_new';
   
 //   db.all(query, (error, rows) => {
 //     if (error) {
@@ -226,20 +231,23 @@ app.post('/get-off-days', (req, res) => {
     return res.status(400).send('Batch is required');
   }
 
-  const query = 'SELECT date FROM off_days_new WHERE batch= ?';
+  const query = 'SELECT dates FROM off_days_new WHERE batch = ?';
   db.get(query, [batch], (error, row) => {
     if (error) {
       console.error(error);
-      res.status(500).send('Error retrieving off days');
-      return;
+      return res.status(500).send('Error retrieving off days');
     }
     if (!row) {
-      return res.status(404).send('Batch not found');
+      // If no rows found for the batch, return an empty array
+      return res.status(200).json([]);
     }
+    
+    // Parse dates from JSON stored in the database row
     const dates = JSON.parse(row.dates);
     res.status(200).json(dates);
   });
 });
+
 
 
 
@@ -256,6 +264,7 @@ app.post('/get-off-days', (req, res) => {
 
 app.delete('/reset-off-days', (req, res) => {
   const { batch } = req.body;
+  console.log("reset batch", batch)
 
   if (!batch) {
     return res.status(400).send('Batch is required');
@@ -269,6 +278,43 @@ app.delete('/reset-off-days', (req, res) => {
       return;
     }
     res.status(200).send('Off days reset successfully');
+  });
+});
+
+
+
+app.delete('/reset-off-days-for-specific-dates', (req, res) => {
+  const { batch, datesToDelete } = req.body;
+
+  if (!batch || !datesToDelete || !Array.isArray(datesToDelete)) {
+    return res.status(400).send('Batch and datesToDelete array are required');
+  }
+
+  const selectQuery = `SELECT dates FROM off_days_new WHERE batch = ?`;
+
+  db.get(selectQuery, [batch], (error, row) => {
+    if (error) {
+      console.error(error);
+      return res.status(500).send('Error retrieving off days');
+    }
+
+    if (!row) {
+      return res.status(404).send('Batch not found');
+    }
+
+    const currentDates = JSON.parse(row.dates);
+    const updatedDates = currentDates.filter(date => !datesToDelete.includes(date));
+    const updatedDatesJson = JSON.stringify(updatedDates);
+
+    const updateQuery = `UPDATE off_days_new SET dates = ? WHERE batch = ?`;
+
+    db.run(updateQuery, [updatedDatesJson, batch], function (error) {
+      if (error) {
+        console.error(error);
+        return res.status(500).send('Error resetting off days');
+      }
+      res.status(200).send('Off days reset successfully');
+    });
   });
 });
 
