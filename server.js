@@ -43,7 +43,7 @@ db_mysql.connect(err => {
 
 db.serialize(() => {
   db.run('CREATE TABLE IF NOT EXISTS batches (id INTEGER PRIMARY KEY AUTOINCREMENT, batch TEXT UNIQUE, start_date TEXT)');
-  db.run('CREATE TABLE IF NOT EXISTS off_days_new (id INTEGER PRIMARY KEY AUTOINCREMENT, batch TEXT UNIQUE, date TEXT UNIQUE)');
+  db.run('CREATE TABLE IF NOT EXISTS off_days_new (id INTEGER PRIMARY KEY AUTOINCREMENT, batch TEXT UNIQUE, date TEXT)');
 
   db.all("SELECT name FROM sqlite_master WHERE type='table'", (err, tables) => {
     if (err) {
@@ -60,6 +60,15 @@ db.serialize(() => {
       console.log('Data of off_days_new:', data);
     }
   });
+
+    
+  // db.all("DROP TABLE off_days_new", (err, data) => {
+  //   if (err) {
+  //     console.error(err);
+  //   } else {
+  //     console.log('off_days_new dropped', data);
+  //   }
+  // });
   
 });
 
@@ -168,7 +177,7 @@ app.post('/save-off-days', (req, res) => {
   const { startDate, endDate, batch } = req.body;
   const start = new Date(startDate);
   const end = new Date(endDate);
-  console.log("Hiiiiiiiiiiiiiiiiiiiiii", startDate, endDate, batch)
+
   if (start > end) {
     return res.status(400).send('Invalid date range');
   }
@@ -178,9 +187,10 @@ app.post('/save-off-days', (req, res) => {
     dates.push(new Date(dt).toISOString().slice(0, 10));
   }
 
-  const query = `INSERT OR IGNORE INTO off_days_new (batch, date) VALUES (?, ?)`;
-  console.log("Hiiiiiii222222222222222222")
-  db.run(query, [batch, dates.flat()], function (error) {
+  const datesJson = JSON.stringify(dates);
+  const query = 'INSERT OR REPLACE INTO off_days_new (batch, dates) VALUES (?, ?)';
+
+  db.run(query, [batch, datesJson], function (error) {
     if (error) {
       console.error(error);
       res.status(500).send('Error saving off days');
@@ -189,6 +199,7 @@ app.post('/save-off-days', (req, res) => {
     res.status(200).send('Off days saved successfully');
   });
 });
+
 
 
 
@@ -207,6 +218,7 @@ app.post('/save-off-days', (req, res) => {
 //   });
 // });
 
+
 app.post('/get-off-days', (req, res) => {
   const { batch } = req.body;
 
@@ -214,14 +226,18 @@ app.post('/get-off-days', (req, res) => {
     return res.status(400).send('Batch is required');
   }
 
-  const query = `SELECT date FROM off_days_new WHERE batch = ?`;
-  db.all(query, [batch], (error, rows) => {
+  const query = 'SELECT date FROM off_days_new WHERE batch= ?';
+  db.get(query, [batch], (error, row) => {
     if (error) {
       console.error(error);
       res.status(500).send('Error retrieving off days');
       return;
     }
-    res.status(200).json(rows);
+    if (!row) {
+      return res.status(404).send('Batch not found');
+    }
+    const dates = JSON.parse(row.dates);
+    res.status(200).json(dates);
   });
 });
 
@@ -296,7 +312,7 @@ app.post('/login', (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).send('Invalid credentials');
     const token = jwt.sign({ id: user.id }, 'secretkey', { expiresIn: '1h' });
-    res.status(200).json({ token });
+    res.status(200).json({ token, user: { id: user.id, email: user.email } });
   });
 });
 
