@@ -75,21 +75,63 @@ db.serialize(() => {
 app.use(cors());
 app.use(bodyParser.json());
 
+// app.post('/batches', (req, res) => {
+//   const { batch, startDate, levelTerm } = req.body;
+
+//   db.run('INSERT OR REPLACE INTO batches (batch, start_date, level_term) VALUES (?, ?, ?)', [batch, startDate, levelTerm], function (error) {
+//     if (error) {
+//       console.error(error);
+//       res.status(500).json({ error: 'Error saving or updating batch.' });
+//       return;
+//     }
+
+//     if (this.changes === 1) {
+//       const id = this.lastID || 'N/A';
+//       res.status(201).json({ message: 'Batch saved or updated successfully.', id });
+//     } else {
+//       res.status(200).json({ message: 'Batch start date updated successfully.' });
+//     }
+//   });
+// });
 app.post('/batches', (req, res) => {
   const { batch, startDate, levelTerm } = req.body;
 
-  db.run('INSERT OR REPLACE INTO batches (batch, start_date, level_term) VALUES (?, ?, ?)', [batch, startDate, levelTerm], function (error) {
-    if (error) {
-      console.error(error);
-      res.status(500).json({ error: 'Error saving or updating batch.' });
+  // Input validation
+  if (!batch || !startDate || !levelTerm) {
+    res.status(400).json({ error: 'Batch, startDate, and levelTerm are required.' });
+    return;
+  }
+
+  db.get('SELECT batch FROM batches WHERE batch = ?', [batch], (err, row) => {
+    if (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Error querying the database.' });
       return;
     }
 
-    if (this.changes === 1) {
-      const id = this.lastID || 'N/A';
-      res.status(201).json({ message: 'Batch saved or updated successfully.', id });
+    if (row) {
+      // Record exists, update it
+      db.run('UPDATE batches SET start_date = ?, level_term = ? WHERE batch = ?', [startDate, levelTerm, batch], function (updateErr) {
+        if (updateErr) {
+          console.error(updateErr);
+          res.status(500).json({ error: 'Error updating the batch.' });
+          return;
+        }
+
+        res.status(200).json({ message: 'Batch updated successfully.' });
+      });
     } else {
-      res.status(200).json({ message: 'Batch start date updated successfully.' });
+      // Record does not exist, insert a new one
+      db.run('INSERT INTO batches (batch, start_date, level_term) VALUES (?, ?, ?)', [batch, startDate, levelTerm], function (insertErr) {
+        if (insertErr) {
+          console.error(insertErr);
+          res.status(500).json({ error: 'Error inserting the new batch.' });
+          return;
+        }
+
+        const id = this.lastID || 'N/A';
+        res.status(201).json({ message: 'Batch created successfully.', id });
+      });
     }
   });
 });
