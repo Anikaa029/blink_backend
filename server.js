@@ -129,8 +129,8 @@ app.post('/batches', (req, res) => {
           return;
         }
 
-        const id = this.lastID || 'N/A';
-        res.status(201).json({ message: 'Batch created successfully.', id });
+        // const id = this.lastID || 'N/A';
+        res.status(201).json({ message: 'Batch created successfully.' });
       });
     }
   });
