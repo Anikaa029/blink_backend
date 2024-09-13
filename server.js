@@ -5,10 +5,14 @@ import sqlite3 from 'sqlite3';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import mysql from 'mysql2';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 import readRoutineDataFromExcelByBatch from './readFile.js'
 
 const app = express();
+app.use(cors());
+app.use(bodyParser.json());
 const port = 3001;
 
 const db = new sqlite3.Database('test_1.db');
@@ -415,6 +419,57 @@ app.post('/login', (req, res) => {
     const token = jwt.sign({ id: user.id }, 'secretkey', { expiresIn: '1h' });
     res.status(200).json({ token, user: { id: user.id, email: user.email } });
   });
+});
+
+// Get the directory name using import.meta.url
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Function to read and parse Excel file
+const readExcelFile = () => {
+  try {
+    const filePath = path.join(__dirname, 'routine.xlsx'); // Adjusted path
+    console.log('Reading file from: ${filePath}');
+    const workbook = xlsx.readFile(filePath);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const data = xlsx.utils.sheet_to_json(worksheet);
+
+    const routine = {};
+
+
+data.forEach(row => {
+      const day = row.Day.toLowerCase();
+      if (!routine[day]) {
+        routine[day] = [];
+      }
+      // Ensure the times are strings before replacing
+      const startTime = String(row['Start Time']).replace('.', ':');
+      const endTime = String(row['End Time']).replace('.', ':');
+      routine[day].push({
+        batch: row.Batch,
+        startTime,
+        endTime,
+        class: row.Class
+      });
+    });
+    console.log('Excel data successfully parsed:', routine);
+    return routine;
+  } catch (error) {
+    console.error('Error reading Excel file:', error);
+    throw error;
+  }
+};
+
+// Endpoint to get the routine
+app.get('/routine', (req, res) => {
+  try {
+    const routine = readExcelFile();
+    res.json(routine);
+  } catch (error) {
+    console.error('Error in /routine endpoint:', error);
+    res.status(500).send('Error reading Excel file');
+  }
 });
 
 app.listen(port, () => {
